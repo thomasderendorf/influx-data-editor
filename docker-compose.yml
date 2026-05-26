@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  influx-editor:
+    build: .
+    container_name: influx-editor
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Passe diese Werte an deine InfluxDB an:
+      INFLUX_URL:  http://192.168.1.100:8086   # IP/Hostname deiner InfluxDB
+      INFLUX_DB:   iobroker                     # Datenbank-Name
+      INFLUX_USER: ""                           # leer lassen wenn keine Auth
+      INFLUX_PASS: ""
