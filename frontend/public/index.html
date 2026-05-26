@@ -298,6 +298,9 @@
     <div class="chart-wrap">
       <canvas id="chart"></canvas>
     </div>
+    <div style="padding:3px 20px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border);flex-shrink:0;">
+      ↔ Im Graphen ziehen um Zeitbereich einzugrenzen
+    </div>
 
     <div class="toolbar">
       <input type="checkbox" class="chk-all" id="chkAll" onchange="toggleAll(this.checked)" title="Alle aus/abwählen">
@@ -468,15 +471,109 @@ function renderChart() {
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { labels: { color: '#5a6080', font: { family: 'JetBrains Mono', size: 10 }, boxWidth: 12 } },
-        tooltip: { backgroundColor: '#1c2030', borderColor: '#2a2f42', borderWidth: 1,
-          bodyFont: { family: 'JetBrains Mono', size: 11 }, titleFont: { family: 'JetBrains Mono', size: 11 } }
+        tooltip: {
+          backgroundColor: '#1c2030', borderColor: '#2a2f42', borderWidth: 1,
+          bodyFont: { family: 'JetBrains Mono', size: 11 }, titleFont: { family: 'JetBrains Mono', size: 11 },
+          callbacks: {
+            title: items => new Date(items[0].parsed.x).toLocaleString('de-DE', { dateStyle:'short', timeStyle:'medium' })
+          }
+        }
       },
       scales: {
-        x: { type: 'time', ticks: { color: '#5a6080', font: { size: 10 } }, grid: { color: '#1a1f2e' } },
+        x: {
+          type: 'time',
+          adapters: { date: { locale: 'de-DE' } },
+          ticks: {
+            color: '#5a6080', font: { size: 10 },
+            callback: function(val) {
+              return new Date(val).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+            }
+          },
+          grid: { color: '#1a1f2e' }
+        },
         y: { ticks: { color: '#5a6080', font: { size: 10 } }, grid: { color: '#1a1f2e' } }
       }
     }
   });
+
+  // Selection overlay
+  initChartSelect(ctx.canvas);
+}
+
+// ─── Chart range selection ────────────────────────────────────────────────────
+function initChartSelect(canvas) {
+  // Remove old listeners by replacing canvas clone trick — instead use flags
+  canvas._sel = null;
+  const existingOverlay = canvas.parentElement.querySelector('.chart-sel-overlay');
+  if (existingOverlay) existingOverlay.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'chart-sel-overlay';
+  overlay.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;';
+  canvas.parentElement.style.position = 'relative';
+  canvas.parentElement.appendChild(overlay);
+
+  const selBox = document.createElement('div');
+  selBox.style.cssText = `position:absolute;top:0;bottom:0;background:rgba(62,207,207,0.15);
+    border-left:1px solid #3ecfcf;border-right:1px solid #3ecfcf;display:none;pointer-events:none;`;
+  overlay.appendChild(selBox);
+
+  let dragging = false, x0 = 0;
+
+  function canvasX(e) {
+    const rect = canvas.getBoundingClientRect();
+    const area = chart.chartArea;
+    const raw = (e.clientX - rect.left);
+    return Math.min(Math.max(raw, area.left), area.right);
+  }
+
+  function xToTime(px) {
+    const area = chart.chartArea;
+    const scale = chart.scales.x;
+    const ratio = (px - area.left) / (area.right - area.left);
+    return scale.min + ratio * (scale.max - scale.min);
+  }
+
+  canvas.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    dragging = true;
+    x0 = canvasX(e);
+    selBox.style.display = 'block';
+    selBox.style.left = x0 + 'px';
+    selBox.style.width = '0px';
+    e.preventDefault();
+  });
+
+  canvas.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const x1 = canvasX(e);
+    const left  = Math.min(x0, x1);
+    const width = Math.abs(x1 - x0);
+    selBox.style.left  = left + 'px';
+    selBox.style.width = width + 'px';
+  });
+
+  canvas.addEventListener('mouseup', e => {
+    if (!dragging) return;
+    dragging = false;
+    selBox.style.display = 'none';
+    const x1 = canvasX(e);
+    if (Math.abs(x1 - x0) < 5) return; // ignore tiny clicks
+
+    const t0 = xToTime(Math.min(x0, x1));
+    const t1 = xToTime(Math.max(x0, x1));
+
+    document.getElementById('fromDt').value = toInputVal(new Date(t0));
+    document.getElementById('toDt').value   = toInputVal(new Date(t1));
+    loadData();
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    if (dragging) { dragging = false; selBox.style.display = 'none'; }
+  });
+
+  // Cursor hint
+  canvas.style.cursor = 'crosshair';
 }
 
 // ─── Selection ────────────────────────────────────────────────────────────────
